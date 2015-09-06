@@ -1,0 +1,64 @@
+-- Bridge riddle
+-- 
+-- https://ed.ted.com/lessons/can-you-solve-the-bridge-riddle-alex-gendler
+-- Open with FDR3
+
+N = 4
+
+-- represents a set of people deciding to cross/return over the bridge
+channel cross, return : Set({1..N})
+-- tock = a minute passing, safe = all people are on the over side
+channel tock, gameover, safe
+
+after(0, P) = P
+after(n, P) = tock -> after(n-1, P)
+
+CLOCK = tock -> CLOCK
+
+-- timings
+-- you take 1 min, lab takes 2, janitor 5, prof 10
+timing(1) = 1
+timing(2) = 2
+timing(3) = 5
+timing(4) = 10
+
+-- all one and two person crossings
+crossings = {s | s<-Set({1..N}), s != {}, card(s) <= 2}
+
+-- a person can only cross/return when on the right side, and takes
+-- at least N minutes to cross (before anyone else can cross/return).
+-- when on the far side they are safe.
+PERSON(i,crossed) =
+  tock -> PERSON(i,crossed)
+[]
+  crossed & safe -> PERSON(i,crossed)
+[]
+  [] s:crossings @ (
+    if member(i,s) then
+        crossed & return.s -> after(timing(i), PERSON(i,not crossed))
+      []
+        not crossed & cross.s -> after(timing(i), PERSON(i,not crossed))
+    else
+        cross.s -> PERSON(i,crossed)
+      []
+        return.s -> PERSON(i,crossed)
+  )
+-- each person needs to agree on crossings, time, and when they are all safe
+PEOPLE = || i:{1..N} @ [{| cross, return, tock, safe |}] PERSON(i,false)
+
+-- the lamp needs to be carried on each crossing
+LAMP = cross?s -> return?s -> LAMP
+-- people and lamp synchronise on crossings
+PEOPLE_LAMP = PEOPLE [|{|cross, return|}|] LAMP
+
+-- after 17 minutes the zombies arrive at the bridge and it's game over!
+GAMEOVER = gameover -> CLOCK
+ZOMBIES = after(17, GAMEOVER)
+SYSTEM = (PEOPLE_LAMP /\ GAMEOVER) [|{tock, gameover}|] ZOMBIES
+
+-- time never stops, even after gameover
+assert SYSTEM :[deadlock free]
+
+-- produce a solution to get all people across to safety
+-- (hide time so we can see the crossings easily)
+assert not STOP [T= (SYSTEM \ {tock}) \ diff(Events,{safe})
